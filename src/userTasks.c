@@ -16,6 +16,9 @@
 #include "semphr.h"
 #include "queue.h"
 #include "supporting_functions.h"
+#include "ff.h"       // <= Biblioteca FAT FS
+#include "fssdc.h"	// API de bajo nivel para unidad "SDC:" en FAT FS
+
 /*=====[Inclusions of private function dependencies]=========================*/
 
 /*=====[Definition macros of private constants]==============================*/
@@ -31,137 +34,156 @@
 /*=====[Definitions of private global variables]=============================*/
 
 /*=====[Prototypes (declarations) of private functions]======================*/
-void vPwmTask( void *pvParameters );
-void vmuestreoTask( void *pvParameters );
-void vLed1_LowTask( void *pvParameters );
-void vLed2_LowTask( void *pvParameters );
+#define FILENAME "SDC:/Temperature.txt"
+static  FIL fp;
 
 /*=====[Implementations of public functions]=================================*/
 
 // Task implementation
 
-void vmuestreoTask( void *pvParameters ){
+void muestreoTask( void* taskParmPtr ){
+
 	// ---------- CONFIGURACIONES ------------------------------
-	sensor_t *pSensor  = (sensor_t*)pvParameters;
-	int32_t lReceivedValue;
+	sensor_t *pSensor  = (sensor_t*)taskParmPtr;
+	QueueHandle_t muestra;
+	SemaphoreHandle_t mutex;
+	uint16_t ValorADC = 0;
+	uint16_t Temperatura = 0;
+	int32_t Valor;
+
 	// ---------- REPETIR POR SIEMPRE --------------------------
 	for( ;; )
 	{
+		ValorADC = adcRead( CH1 );
+		Temperatura = (400*ValorADC)/1024;
+		Valor = (int32_t)Temperatura;
 
-		if( uxQueueMessagesWaiting(pSensor->muestra ) != 0 ) {
-			vPrintString( "Queue should have been empty!\r\n" );
+		xSemaphoreTake( mutex , portMAX_DELAY );			//abrir seccion critica
+		vPrintStringAndNumber( "Temperature is:", Valor );
+		xSemaphoreGive( mutex );
+
+
+		//xStatus = xQueueSendToBack ( pSensor->muestra , &Valor,  portMAX_DELAY  );
+		if(xQueueSend(muestra , &Valor,  portMAX_DELAY )!= pdTRUE){
+			vPrintString( "Could not send from the queue.\r\n" );
 		}
-
-		if( xQueueReceive( pSensor->muestra, &lReceivedValue, portMAX_DELAY  ) != pdPASS ) //portMAX_DELAY
-		{
-
-			vPrintStringAndNumber( "Temperature is:", lReceivedValue );
-		}
-		else
-		{
-			/* xMessage now contains the received data. */
-		vPrintString( "Could not receive from the queue.\r\n" );
-		}
-
-		vTaskDelay( 10 / portTICK_RATE_MS);
 	}
 }
 
-void vLed1_LowTask( void *pvParameters )
+void Led1_LowTask( void *taskParmPtr )
 {
-   /* Declare the variable that will hold the values received from the queue. */
-	sensor_t *pSensor  = (sensor_t*)pvParameters;
-	int32_t lReceivedValueLed1;
-   BaseType_t xStatus;
-  // const TickType_t xTicksToWait = pdMS_TO_TICKS( 100UL );
+	// ---------- CONFIGURACIONES ------------------------------
+	sensor_t *pSensor  = (sensor_t*)taskParmPtr;
+	QueueHandle_t muestra;
+	int32_t Led1;
+	TickType_t xPeriodicity =  1000 / portTICK_RATE_MS;		// Tarea periodica cada 1000 ms
+	TickType_t xLastWakeTime = xTaskGetTickCount();
 
-   /* This task is also defined within an infinite loop. */
-   for( ;; ) {
+	// ---------- REPETIR POR SIEMPRE --------------------------
+	for(;;){
 
-      if( uxQueueMessagesWaiting( pSensor->Alarm_L ) != 0 ) {
-         vPrintString( "Queue should have been empty!\r\n" );
-      }
-
-      xStatus = xQueueReceive( pSensor->Alarm_L, &lReceivedValueLed1, portMAX_DELAY );
-
-      if( xStatus == pdPASS ) {
-
-    	  	if(lReceivedValueLed1 == 1){
-    	  		gpioWrite( LED1 , 1 );
-    	  		vTaskDelay( 100 / portTICK_RATE_MS);
-    	  		gpioWrite( LED1 , 0 );
-    	  	}
-
-      } else {
-         vPrintString( "Could not receive from the queue.\r\n" );
-      }
-   }
+		if (xQueueReceive( muestra, &Led1, portMAX_DELAY )== pdTRUE){
+			if(Led1 <= 100){
+				gpioWrite( LED1 , 1 );
+				vTaskDelay( 500 / portTICK_RATE_MS);
+				gpioWrite( LED1 , 0 );
+			}
+		}else{
+			vPrintString( "Could not receive from the queue.\r\n" );
+		}
+		vTaskDelayUntil( &xLastWakeTime , xPeriodicity );
+	}
 }
 
-void vLed2_LowTask( void *pvParameters )
+void Led2_HightTask( void *taskParmPtr )
 {
-   /* Declare the variable that will hold the values received from the queue. */
-	sensor_t *pSensor  = (sensor_t*)pvParameters;
-	int32_t lReceivedValueLed2;
-   BaseType_t xStatus;
-  // const TickType_t xTicksToWait = pdMS_TO_TICKS( 100UL );
+	// ---------- CONFIGURACIONES ------------------------------
+	sensor_t *pSensor  = (sensor_t*)taskParmPtr;
+	QueueHandle_t muestra;
+	int32_t Led2;
+	TickType_t xPeriodicity =  1000 / portTICK_RATE_MS;		// Tarea periodica cada 1000 ms
+	TickType_t xLastWakeTime = xTaskGetTickCount();
 
-   /* This task is also defined within an infinite loop. */
-   for( ;; ) {
+	// ---------- REPETIR POR SIEMPRE --------------------------
+	for(;;){
 
-      if( uxQueueMessagesWaiting( pSensor->Alarm_H ) != 0 ) {
-         vPrintString( "Queue should have been empty!\r\n" );
-      }
-
-      xStatus = xQueueReceive( pSensor->Alarm_H, &lReceivedValueLed2, portMAX_DELAY );
-
-      if( xStatus == pdPASS ) {
-
-    	  	if(lReceivedValueLed2 == 1){
-    	  		gpioWrite( LED2 , 1 );
-    	  		vTaskDelay( 100 / portTICK_RATE_MS);
-    	  		gpioWrite( LED2 , 0 );
-    	  	}
-
-      } else {
-         vPrintString( "Could not receive from the queue.\r\n" );
-      }
-   }
+		if (xQueueReceive( muestra, &Led2, portMAX_DELAY )== pdTRUE){
+			if(Led2 >= 300){
+				gpioWrite( LED2 , 1 );
+				vTaskDelay( 500 / portTICK_RATE_MS);
+				gpioWrite( LED2 , 0 );
+			}
+		}else{
+			vPrintString( "Could not receive from the queue.\r\n" );
+		}
+		vTaskDelayUntil( &xLastWakeTime , xPeriodicity );
+	}
 }
 
-void vPwmTask( void *pvParameters )
+
+void PwmTask( void *taskParmPtr )
 {
-   /* Declare the variable that will hold the values received from the queue. */
-	sensor_t *pSensor  = (sensor_t*)pvParameters;
-	int32_t lReceivedValuePwm;
-	BaseType_t xStatus;
+	// ---------- CONFIGURACIONES ------------------------------
+	sensor_t *pSensor  = (sensor_t*)taskParmPtr;
+	QueueHandle_t muestra;
+	int32_t Pwm;
 	uint8_t dutyCycle = 0;  /* 0 a 255 */
 	pwmWrite( PWM7, dutyCycle );
+	TickType_t xPeriodicity =  1000 / portTICK_RATE_MS;		// Tarea periodica cada 1000 ms
+	TickType_t xLastWakeTime = xTaskGetTickCount();
 
-   /* This task is also defined within an infinite loop. */
-   for( ;; ) {
+	// ---------- REPETIR POR SIEMPRE --------------------------
 
-      if( uxQueueMessagesWaiting( pSensor->PWM ) != 0 ) {
-         vPrintString( "Queue should have been empty!\r\n" );
-      }
+	for(;;){
 
-      xStatus = xQueueReceive( pSensor->PWM, &lReceivedValuePwm, portMAX_DELAY );
+		if (xQueueReceive( muestra, &Pwm, portMAX_DELAY )== pdTRUE){
+			if(Pwm >= 300 || Pwm <= 100){
+				if( dutyCycle > 255 ){
+					dutyCycle = 0;
+				}
+				pwmWrite( PWM7, dutyCycle );
+				dutyCycle++;
+				vTaskDelay( 50 / portTICK_RATE_MS );
+			}
+		}else{
+			vPrintString( "Could not receive from the queue.\r\n" );
+		}
+		vTaskDelayUntil( &xLastWakeTime , xPeriodicity );
 
-      if( xStatus == pdPASS ) {
+	}
+}
 
-    	  	if(lReceivedValuePwm == 1 ){
-       			if( dutyCycle > 255 ){
-       				dutyCycle = 0;
-       			}
-       			pwmWrite( PWM7, dutyCycle );
-       			dutyCycle++;
-       			vTaskDelay( 50 / portTICK_RATE_MS );
-    	  	}
+void RegisterTask( void* taskParmPtr ){
 
-      } else {
-         vPrintString( "Could not receive from the queue.\r\n" );
-      }
-   }
+	// ---------- CONFIGURACIONES ------------------------------
+	sensor_t *pSensor  = (sensor_t*)taskParmPtr;
+	QueueHandle_t muestra;
+	int32_t Temp;
+	char BufferRegistre[100];
+
+	if (xQueueReceive( muestra, &Temp, portMAX_DELAY )== pdTRUE){
+		if( f_open( &fp, FILENAME, FA_WRITE | FA_OPEN_APPEND ) == FR_OK ){
+			UINT nbytes;
+			UINT n = sprintf( BufferRegistre, "Temperature is: %3d °C \r\n",Temp);
+			f_write( &fp, &pSensor ->bufferRegistre, n, &nbytes );
+
+			f_close(&fp);
+
+			if( nbytes == n ){
+				vPrintString( "Escribio correctamente\r\n" );
+
+
+			} else {
+
+				printf("Escribio %d bytes\n", nbytes);
+			}
+		} else{
+			vPrintString( "Error al abrir el archivo\r\n" );
+		}
+	}else{
+				vPrintString( "Could not receive from the queue.\r\n" );
+	}
+	vTaskDelete(NULL);
 }
 
 /*=====[Implementations of interrupt functions]==============================*/

@@ -39,8 +39,9 @@ bool_t sensor_control(sensor_t * pSensor){
 
 	ValorADC = adcRead( CH1 );
 	Temperatura = (400*ValorADC)/1024;
-	int32_t valor = (uint16_t)Temperatura;
-	xQueueSend( pSensor->muestra , &pSensor->valor,  portMAX_DELAY  );
+	pSensor-> valor = (uint16_t)Temperatura;
+
+	//xQueueSend( pSensor->muestra , &pSensor->valor,  portMAX_DELAY  );
 	//xQueueSend( pSensor->Registro , &pSensor->valor,  portMAX_DELAY  );
 
 	if(pSensor->ValueAlarmlow >= Temperatura){

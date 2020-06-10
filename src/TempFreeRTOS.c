@@ -25,19 +25,26 @@
 
 /*=====[Definitions of public global variables]==============================*/
 
+void PwmTask( void *taskParmPtr );
+void muestreoTask( void* taskParmPtr );
+void Led1_LowTask( void *taskParmPtr );
+void Led2_HightTask( void *taskParmPtr);
+void RegisterTask( void* taskParmPtr );
 /*=====[Definitions of private global variables]=============================*/
 #define FILENAME "SDC:/Temperature.txt"
 DEBUG_PRINT_ENABLE;
 static  FIL fp;
+QueueHandle_t muestra;
+SemaphoreHandle_t mutex;
 
-
-sensor_t pSensor;
+//sensor_t pSensor;
 /*=====[Main function, program entry point after power on or reset]==========*/
 
 int main( void )
 {
 	  // Inicializar y configurar la plataforma
 		boardConfig();
+
 		/* Configurar PWM */
 		pwmConfig( 0, PWM_ENABLE );
 		pwmConfig( PWM7, PWM_ENABLE_OUTPUT );
@@ -59,46 +66,62 @@ int main( void )
 
 		// Led para dar se�al de vida
 		gpioWrite( LEDB , ON );
-/*
+
    // Create a task in freeRTOS with dynamic memory
+
    xTaskCreate(
-      myTask,                     // Function that implements the task.
-      (const char *)"myTask",     // Text name for the task.
+		   Led1_LowTask,                     // Function that implements the task.
+      (const char *)"Led1 Task",     // Text name for the task.
       configMINIMAL_STACK_SIZE*2, // Stack size in words, not bytes.
       0,                          // Parameter passed into the task.
-      tskIDLE_PRIORITY+1,         // Priority at which the task is created.
+	  tskIDLE_PRIORITY+2,				 // Priority at which the task is created.
       0                           // Pointer to the task created in the system
    );
-*/
-		pSensor.Alarm_H = xQueueCreate( 5, sizeof( sensor_t ) );
 
-		if( pSensor.Alarm_H == NULL ) {
-			debugPrintlnString("Error al crear la tarea Alarma alta\n");
-		}
+   xTaskCreate(
+		   Led2_HightTask,            // Function that implements the task.
+      (const char *)"Led2 Task",     // Text name for the task.
+      configMINIMAL_STACK_SIZE*2, // Stack size in words, not bytes.
+      0,                          // Parameter passed into the task.
+	  tskIDLE_PRIORITY+2,     		// Priority at which the task is created.
+      0                           // Pointer to the task created in the system
+   );
 
-		pSensor.Alarm_L = xQueueCreate( 5, sizeof( sensor_t ) );
+   xTaskCreate(
+		   PwmTask,                     // Function that implements the task.
+      (const char *)"Pwm Task",     // Text name for the task.
+      configMINIMAL_STACK_SIZE*2, // Stack size in words, not bytes.
+      0,                          // Parameter passed into the task.
+      tskIDLE_PRIORITY+2,         // Priority at which the task is created.
+      0                           // Pointer to the task created in the system
+   );
 
-		if( pSensor.Alarm_L == NULL ) {
-			debugPrintlnString("Error al crear la tarea Alarma baja\n");
-		}
+   xTaskCreate(
+		   muestreoTask,             // Function that implements the task.
+      (const char *)"muestreo Task",     // Text name for the task.
+      configMINIMAL_STACK_SIZE*2, // Stack size in words, not bytes.
+      0,                          // Parameter passed into the task.
+	  tskIDLE_PRIORITY+1,  		 // Priority at which the task is created.
+      0                           // Pointer to the task created in the system
+   );
 
-		pSensor.PWM = xQueueCreate( 5, sizeof( sensor_t ) );
+   xTaskCreate(
+		   RegisterTask,             // Function that implements the task.
+      (const char *)"Registro Task",     // Text name for the task.
+      configMINIMAL_STACK_SIZE*2, // Stack size in words, not bytes.
+      0,                          // Parameter passed into the task.
+	  tskIDLE_PRIORITY+2,  		 // Priority at which the task is created.
+      0                           // Pointer to the task created in the system
+   );
 
-		if( pSensor.PWM == NULL ) {
-			debugPrintlnString("Error al crear la tarea PWM\n");
-		}
 
-		pSensor.muestra = xQueueCreate( 5, sizeof( sensor_t ) );
+	muestra = xQueueCreate( 20, sizeof( int32_t ) );
 
-		if( pSensor.muestra == NULL ) {
-			debugPrintlnString("Error al crear la tarea muestra\n");
-		}
+	if( muestra == NULL ) {
+		debugPrintlnString("Error al crear la tarea muestra\n");
+	}
 
-		pSensor.Registro = xQueueCreate( 5, sizeof( sensor_t ) );
-
-		if( pSensor.Registro == NULL ) {
-			debugPrintlnString("Error al crear la tarea Registro\n");
-		}
+	mutex 	=  xSemaphoreCreateMutex();
 
    vTaskStartScheduler(); // Initialize scheduler
 
@@ -113,5 +136,6 @@ int main( void )
    return 0;
 }
 //____________________________________________________________________
+
 
 
