@@ -8,16 +8,7 @@
 
 #include "userTasks.h"
 #include "TempFreeRTOS.h"
-#include "FreeRTOS.h"
-#include "FreeRTOSConfig.h"
-#include "task.h"
-#include "sapi.h"
-#include "Temp.h"
-#include "semphr.h"
-#include "queue.h"
-#include "supporting_functions.h"
-#include "ff.h"       // <= Biblioteca FAT FS
-#include "fssdc.h"	// API de bajo nivel para unidad "SDC:" en FAT FS
+
 
 /*=====[Inclusions of private function dependencies]=========================*/
 
@@ -34,7 +25,7 @@
 /*=====[Definitions of private global variables]=============================*/
 
 /*=====[Prototypes (declarations) of private functions]======================*/
-#define FILENAME "SDC:/Temperature.txt"
+#define FILENAME "SDC:/TempRTOS.txt"
 static  FIL fp;
 
 /*=====[Implementations of public functions]=================================*/
@@ -44,9 +35,7 @@ static  FIL fp;
 void muestreoTask( void* taskParmPtr ){
 
 	// ---------- CONFIGURACIONES ------------------------------
-	sensor_t *pSensor  = (sensor_t*)taskParmPtr;
-	QueueHandle_t muestra;
-	SemaphoreHandle_t mutex;
+
 	uint16_t ValorADC = 0;
 	uint16_t Temperatura = 0;
 	int32_t Valor;
@@ -62,128 +51,190 @@ void muestreoTask( void* taskParmPtr ){
 		vPrintStringAndNumber( "Temperature is:", Valor );
 		xSemaphoreGive( mutex );
 
+		xSemaphoreTake( mutex , portMAX_DELAY );
+		xQueueSendToBack(muestraLed , &Temperatura,  portMAX_DELAY );
+		xSemaphoreGive( mutex );
 
-		//xStatus = xQueueSendToBack ( pSensor->muestra , &Valor,  portMAX_DELAY  );
-		if(xQueueSend(muestra , &Valor,  portMAX_DELAY )!= pdTRUE){
-			vPrintString( "Could not send from the queue.\r\n" );
-		}
+		xSemaphoreTake( mutex , portMAX_DELAY );
+		xQueueSendToBack(muestraLed2 , &Temperatura,  portMAX_DELAY );
+		xSemaphoreGive( mutex );
+
+		xSemaphoreTake( mutex , portMAX_DELAY );
+		xQueueSendToBack(muestraPwm , &Temperatura,  portMAX_DELAY );
+		xSemaphoreGive( mutex );
+
+		xSemaphoreTake( mutex , portMAX_DELAY );
+		xQueueSend(muestraRegistro , &Temperatura,  portMAX_DELAY );
+		xSemaphoreGive( mutex );
+
+
+		 vTaskDelay( 1000 / portTICK_RATE_MS );
 	}
+
 }
 
-void Led1_LowTask( void *taskParmPtr )
+
+void Led_Task( void *taskParmPtr )
 {
 	// ---------- CONFIGURACIONES ------------------------------
-	sensor_t *pSensor  = (sensor_t*)taskParmPtr;
-	QueueHandle_t muestra;
-	int32_t Led1;
-	TickType_t xPeriodicity =  1000 / portTICK_RATE_MS;		// Tarea periodica cada 1000 ms
-	TickType_t xLastWakeTime = xTaskGetTickCount();
 
+
+	uint16_t Led;
+	Led = 0;
+	BaseType_t xStatus;
 	// ---------- REPETIR POR SIEMPRE --------------------------
 	for(;;){
 
-		if (xQueueReceive( muestra, &Led1, portMAX_DELAY )== pdTRUE){
-			if(Led1 <= 100){
-				gpioWrite( LED1 , 1 );
-				vTaskDelay( 500 / portTICK_RATE_MS);
-				gpioWrite( LED1 , 0 );
+		if( uxQueueMessagesWaiting( muestraLed ) != 0 ) {
+			vPrintString( "Queue should have been empty!\r\n" );
+		}
+		xStatus = xQueueReceive( muestraLed, &Led, portMAX_DELAY );
+
+		if( xStatus == pdPASS ){
+			if(Led > 300 && Led < 350){
+				gpioWrite( LED1 , ON );
+				vTaskDelay( 800 / portTICK_RATE_MS);
+				gpioWrite( LED1 , OFF );
 			}
-		}else{
+			if(Led < 100 && Led > 50){
+				gpioWrite( LED1 , ON );
+				vTaskDelay( 800 / portTICK_RATE_MS);
+				gpioWrite( LED1 , OFF );
+			}
+		}else {
+
 			vPrintString( "Could not receive from the queue.\r\n" );
 		}
-		vTaskDelayUntil( &xLastWakeTime , xPeriodicity );
+		vTaskDelay( 1000 / portTICK_RATE_MS );
 	}
 }
 
-void Led2_HightTask( void *taskParmPtr )
+void Led2_Task( void *taskParmPtr )
 {
 	// ---------- CONFIGURACIONES ------------------------------
-	sensor_t *pSensor  = (sensor_t*)taskParmPtr;
-	QueueHandle_t muestra;
-	int32_t Led2;
-	TickType_t xPeriodicity =  1000 / portTICK_RATE_MS;		// Tarea periodica cada 1000 ms
-	TickType_t xLastWakeTime = xTaskGetTickCount();
-
+	uint16_t Led2;
+	Led2 = 0;
+	BaseType_t xStatus;
 	// ---------- REPETIR POR SIEMPRE --------------------------
 	for(;;){
 
-		if (xQueueReceive( muestra, &Led2, portMAX_DELAY )== pdTRUE){
-			if(Led2 >= 300){
-				gpioWrite( LED2 , 1 );
-				vTaskDelay( 500 / portTICK_RATE_MS);
-				gpioWrite( LED2 , 0 );
+		if( uxQueueMessagesWaiting( muestraLed2 ) != 0 ) {
+			vPrintString( "Queue should have been empty!\r\n" );
+		}
+		xStatus = xQueueReceive( muestraLed2, &Led2, portMAX_DELAY );
+
+		if( xStatus == pdPASS ){
+			if(Led2 > 350 || Led2 < 50){
+				gpioWrite( LED2 , ON );
+				vTaskDelay( 300 / portTICK_RATE_MS);
+				gpioWrite( LED2 , OFF );
 			}
-		}else{
+		}else {
+
 			vPrintString( "Could not receive from the queue.\r\n" );
 		}
-		vTaskDelayUntil( &xLastWakeTime , xPeriodicity );
+		vTaskDelay( 1000 / portTICK_RATE_MS );
 	}
 }
-
 
 void PwmTask( void *taskParmPtr )
 {
 	// ---------- CONFIGURACIONES ------------------------------
-	sensor_t *pSensor  = (sensor_t*)taskParmPtr;
-	QueueHandle_t muestra;
-	int32_t Pwm;
+
+	uint16_t Pwm;
+	Pwm = 0;
+	BaseType_t xStatus;
 	uint8_t dutyCycle = 0;  /* 0 a 255 */
-	pwmWrite( PWM7, dutyCycle );
-	TickType_t xPeriodicity =  1000 / portTICK_RATE_MS;		// Tarea periodica cada 1000 ms
-	TickType_t xLastWakeTime = xTaskGetTickCount();
+	pwmWrite( PWM0, dutyCycle );
 
 	// ---------- REPETIR POR SIEMPRE --------------------------
 
 	for(;;){
 
-		if (xQueueReceive( muestra, &Pwm, portMAX_DELAY )== pdTRUE){
-			if(Pwm >= 300 || Pwm <= 100){
-				if( dutyCycle > 255 ){
-					dutyCycle = 0;
-				}
-				pwmWrite( PWM7, dutyCycle );
-				dutyCycle++;
-				vTaskDelay( 50 / portTICK_RATE_MS );
+		if( uxQueueMessagesWaiting( muestraPwm ) != 0 ) {
+			vPrintString( "Queue should have been empty!\r\n" );
+		}
+		xStatus = xQueueReceive( muestraPwm, &Pwm, portMAX_DELAY);
+
+		if( xStatus == pdPASS ){
+			if (Pwm > 300 && Pwm < 350){
+				dutyCycle = 100;
+				pwmWrite( PWM0, dutyCycle );
+			}else if(Pwm < 100 && Pwm > 50){
+				dutyCycle = 100;
+				pwmWrite( PWM0, dutyCycle );
+			}else if(Pwm > 350 && Pwm <= 400){
+				dutyCycle = 200;
+				pwmWrite( PWM0, dutyCycle );
+			}else if(Pwm < 50 && Pwm >= 0){
+				dutyCycle = 200;
+				pwmWrite( PWM0, dutyCycle );
+			}else{
+				dutyCycle = 0;
+				pwmWrite( PWM0, dutyCycle );
 			}
-		}else{
+		}else {
 			vPrintString( "Could not receive from the queue.\r\n" );
 		}
-		vTaskDelayUntil( &xLastWakeTime , xPeriodicity );
 
+		vTaskDelay( 1000 / portTICK_RATE_MS );
+
+	}
+}
+
+void DiskTask(void *taskParmPtr)
+{
+
+	portTickType xPeriodicity = 10 / portTICK_RATE_MS;
+	portTickType xLastWakeTime = xTaskGetTickCount();
+
+	for (;;)
+	{
+		disk_timerproc();
+		vTaskDelayUntil(&xLastWakeTime, xPeriodicity);
 	}
 }
 
 void RegisterTask( void* taskParmPtr ){
 
 	// ---------- CONFIGURACIONES ------------------------------
-	sensor_t *pSensor  = (sensor_t*)taskParmPtr;
-	QueueHandle_t muestra;
-	int32_t Temp;
-	char BufferRegistre[100];
+	uint16_t Temp;
+	Temp = 0;
+	uint8_t BufferRegistre[200];
+	uint8_t valor;
+	BaseType_t xStatus;
 
-	if (xQueueReceive( muestra, &Temp, portMAX_DELAY )== pdTRUE){
-		if( f_open( &fp, FILENAME, FA_WRITE | FA_OPEN_APPEND ) == FR_OK ){
-			UINT nbytes;
-			UINT n = sprintf( BufferRegistre, "Temperature is: %3d °C \r\n",Temp);
-			f_write( &fp, &pSensor ->bufferRegistre, n, &nbytes );
+	// ---------- REPETIR POR SIEMPRE --------------------------
 
-			f_close(&fp);
-
-			if( nbytes == n ){
-				vPrintString( "Escribio correctamente\r\n" );
-
-
-			} else {
-
-				printf("Escribio %d bytes\n", nbytes);
-			}
-		} else{
-			vPrintString( "Error al abrir el archivo\r\n" );
+	for(;;){
+		if( uxQueueMessagesWaiting( muestraRegistro ) != 0 ) {
+			vPrintString( "Queue should have been empty!\r\n" );
 		}
-	}else{
-				vPrintString( "Could not receive from the queue.\r\n" );
+
+		xStatus = xQueueReceive( muestraRegistro, &Temp, portMAX_DELAY );
+		valor = (uint16_t)Temp;
+		if( xStatus == pdPASS ){
+			if( f_open( &fp, FILENAME, FA_WRITE | FA_OPEN_APPEND ) == FR_OK ){
+				UINT nbytes;
+				UINT n = sprintf( BufferRegistre, "Temperature is: %d °C \r\n",Temp);
+				f_write( &fp, BufferRegistre, n, &nbytes );
+
+				f_close(&fp);
+
+				if( nbytes == n ){
+					vPrintString( "Escribio correctamente\r\n" );
+				} else {
+					printf("Escribio %d bytes\n", nbytes);
+				}
+			} else{
+				vPrintString( "Error al abrir el archivo\r\n" );
+			}
+		}else{
+			vPrintString( "Could not receive from the queue.\r\n" );
+		}
+		vTaskDelay( 1000 / portTICK_RATE_MS );
 	}
-	vTaskDelete(NULL);
+
 }
 
 /*=====[Implementations of interrupt functions]==============================*/

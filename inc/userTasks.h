@@ -11,9 +11,8 @@
 
 /*=====[Inclusions of public function dependencies]==========================*/
 
-#include "FreeRTOS.h"
-#include "task.h"
-#include "sapi.h"
+
+#include "TempFreeRTOS.h"
 
 /*=====[C++ - begin]=========================================================*/
 
@@ -29,7 +28,13 @@ extern "C" {
 
 /*=====[Prototypes (declarations) of public functions]=======================*/
 
-void myTask( void* taskParmPtr );  // Task declaration
+//void myTask( void* taskParmPtr );  // Task declaration
+void PwmTask( void *taskParmPtr );
+void muestreoTask( void* taskParmPtr );
+void Led_Task( void *taskParmPtr );
+void Led2_Task( void *taskParmPtr );
+void RegisterTask( void* taskParmPtr );
+void DiskTask(void *taskParmPtr);
 
 /*=====[Prototypes (declarations) of public interrupt functions]=============*/
 
